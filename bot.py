@@ -109,15 +109,19 @@ class BTCPredictionBot:
                 arb_market = next((m for m in tradeable if m.condition_id == opp.market_condition_id), None)
                 if arb_market:
                     # Buy UP side
-                    await self.polymarket.place_order(
+                    up_trade = await self.polymarket.place_order(
                         market=arb_market, direction="up", size_usd=opp.size_per_side,
                         oracle_price=consensus.price, confidence=1.0,
                     )
+                    if up_trade:
+                        self.risk_manager.record_entry()
                     # Buy DOWN side
-                    await self.polymarket.place_order(
+                    down_trade = await self.polymarket.place_order(
                         market=arb_market, direction="down", size_usd=opp.size_per_side,
                         oracle_price=consensus.price, confidence=1.0,
                     )
+                    if down_trade:
+                        self.risk_manager.record_entry()
                     self.trade_logger.log_trade({
                         "type": "arb", "edge_pct": opp.edge_pct,
                         "size_per_side": opp.size_per_side, "profit": opp.guaranteed_profit,
@@ -125,6 +129,7 @@ class BTCPredictionBot:
                     })
 
             # 6b. Hedge check (if enabled)
+            direction = decision.direction.value
             open_trades = self.polymarket.get_trade_records()
             hedges = self.edge.check_hedge(
                 open_trades=open_trades,
@@ -145,6 +150,7 @@ class BTCPredictionBot:
                         confidence=decision.confidence,
                     )
                     if trade:
+                        self.risk_manager.record_entry()
                         self.edge.mark_hedged(h.original_trade_id)
                         self.trade_logger.log_trade({
                             "type": "hedge", "original": h.original_trade_id,
@@ -152,7 +158,6 @@ class BTCPredictionBot:
                         })
 
             # 7. Execute directional trade
-            direction = decision.direction.value
             size = self.risk_manager.calculate_position_size(decision.confidence)
             if size <= 0:
                 return
@@ -163,6 +168,7 @@ class BTCPredictionBot:
             )
 
             if trade:
+                self.risk_manager.record_entry()
                 self.trade_logger.log_trade({
                     "trade_id": trade.trade_id, "direction": trade.direction,
                     "size_usd": trade.size_usd, "confidence": trade.confidence,

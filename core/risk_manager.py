@@ -78,12 +78,18 @@ class RiskManager:
         size = min(size, self.capital)
         return round(size, 2)
 
-    def record_trade(self, pnl: float):
+    def record_entry(self):
+        """Record a newly opened trade for daily trade-limit enforcement."""
         self._reset_daily_if_needed()
         self._daily.trades += 1
+        self._daily.last_trade_time = time.time()
+
+    def record_trade(self, pnl: float):
+        self._reset_daily_if_needed()
         self._daily.total_pnl += pnl
         self._daily.last_trade_time = time.time()
         self._total_pnl += pnl
+        self.capital += pnl
 
         if pnl >= 0:
             self._daily.wins += 1
@@ -91,7 +97,6 @@ class RiskManager:
         else:
             self._daily.losses += 1
             self._daily.consecutive_losses += 1
-            self.capital += pnl
             if self._daily.consecutive_losses >= self.config.max_consecutive_losses:
                 logger.warning(f"⚠️ {self._daily.consecutive_losses} consecutive losses — cooldown")
 
